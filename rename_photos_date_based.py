@@ -2,16 +2,10 @@ import os
 import time
 import filetype
 import exiftool
+from shutil import copy2
 from datetime import datetime, timedelta
 from PIL import Image
 from natsort import natsorted, natsort_keygen
-
-# Image.MAX_IMAGE_PIXELS = None
-
-path = r""
-count = 1
-date = None
-nkey = natsort_keygen()
 
 
 def print_mod_and_create_date(count, filepath):
@@ -29,11 +23,12 @@ def print_mod_and_create_date(count, filepath):
     return count
 
 
-def get_image_creation_date(filepath):
+def get_image_creation_date(filepath, file, date):
     with exiftool.ExifToolHelper() as et:
         metadata = et.get_metadata(filepath)
     if "EXIF:CreateDate" in metadata[0]:
         date = metadata[0]["EXIF:CreateDate"]
+        date = fix_date_format(date)
 
     if date is None:
         try:
@@ -46,7 +41,7 @@ def get_image_creation_date(filepath):
         if exif_data:
             if 36867 in exif_data:
                 date = exif_data[36867]  # DateTimeOriginal
-                date = date.replace(":", "-", 2)
+                date = fix_date_format(date)
                 print(f"{0:<30}{date}")
 
         img.close()
@@ -57,13 +52,11 @@ def get_video_creation_date(filepath):
     with exiftool.ExifToolHelper() as et:
         metadata = et.get_metadata(filepath)
     if "QuickTime:CreationDate" in metadata[0]:
-        date = (
-            metadata[0]["QuickTime:CreationDate"]
-            .replace(":", "-", 2)
-            .split("+")[0]
-        )
+        date = metadata[0]["QuickTime:CreationDate"].split("+")[0]
+        date = fix_date_format(date)
     elif "QuickTime:CreateDate" in metadata[0]:
-        date = metadata[0]["QuickTime:CreateDate"].replace(":", "-", 2)
+        date = metadata[0]["QuickTime:CreateDate"]
+        date = fix_date_format(date)
         if "+" in metadata[0]["File:FileModifyDate"]:
             timeshift_value = (
                 metadata[0]["File:FileModifyDate"].split("+")[1].split(":")[0]
@@ -76,29 +69,70 @@ def get_video_creation_date(filepath):
     return date
 
 
-for subdir, dirs, files in os.walk(path):
-    dirs.sort(key=nkey)
-    for file in natsorted(files):
-        filepath = os.path.join(subdir, file)
+def fix_date_format(date):
+    if date.count(":") > 2:
+        date = date.replace(":", "-", 2)
+    return date
 
-        # previous file data
-        if date is None and count > 1:
-            count = print_mod_and_create_date(count, filepath)
-        elif count > 1:
-            print(f"{date}")
+
+def print_creation_date(count, date, kind, filepath):
+    if date is None and kind is not None:
+        count = print_mod_and_create_date(count, filepath)
+    elif date is not None:
+        print(f"{date}")
+
+
+def construct_filename(prefix, date, count, file_extension):
+    if date is None:
+        date = count
+    else:
+        date = date.replace(" ", "_").replace(":", "")
+    filename = f"{prefix}_{date}{file_extension}"
+    return filename
+
+
+def main():
+    # Image.MAX_IMAGE_PIXELS = None
+
+    path = r
+    dest_path = r""
+    count = 1
+    date = None
+    kind = None
+    nkey = natsort_keygen()
+
+    for subdir, dirs, files in os.walk(path):
+        dirs.sort(key=nkey)
+        for file in natsorted(files):
+            filepath = os.path.join(subdir, file)
+            file_extension = os.path.splitext(file)[1]
+
+            # previous file data
+            print_creation_date(count, date, kind, filepath)
+
+            print(f"\t{count}  {file}")
             date = None
+            kind = filetype.guess(filepath)
 
-        print(f"\t{count}  {file}")
-        count += 1
-        kind = filetype.guess(filepath)
-        date = None
+            if kind is None:
+                print(f"UNKNOWN FILETYPE: {file}")
+                continue
 
-        if kind is None:
-            print(f"UNKNOWN FILETYPE: {file}")
-            continue
+            elif kind.mime.startswith("image"):
+                date = get_image_creation_date(filepath, file, date)
+                # print(construct_filename("test", date, count))
 
-        elif kind.mime.startswith("image"):
-            date = get_image_creation_date(filepath)
+            elif kind.mime.startswith("video"):
+                date = get_video_creation_date(filepath)
 
-        elif kind.mime.startswith("video"):
-            date = get_video_creation_date(filepath)
+            print(construct_filename("test", date, count))
+            count += 1
+
+    print_creation_date(count, date, kind, filepath)
+    filename = construct_filename("test", date, count, file_extension)
+
+    copy2(filepath, os.path.join(dest_path, filename))
+
+
+if __name__ == "__main__":
+    main()
