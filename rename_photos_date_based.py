@@ -1,6 +1,7 @@
 import os
 import time
 import filetype
+import exiftool
 from PIL import Image
 from natsort import natsorted, natsort_keygen
 
@@ -29,8 +30,8 @@ def print_mod_and_create_date(count, file, filepath):
     )
     mod = "MOD:"
     create = "CREATE:"
-    print(f"{mod:<20}{mod_date}")
-    print(f"{create:<20}{create_date}")
+    print(f"{mod:<30}{mod_date}")
+    print(f"{create:<30}{create_date}")
 
 
 for subdir, dirs, files in os.walk(path):
@@ -54,13 +55,42 @@ for subdir, dirs, files in os.walk(path):
                     continue
 
                 exif_data = img._getexif()
+                if not exif_data:
+                    print(f"NO EXIF DATA: {file}")
+                    continue
+                print(exif_data)
                 for t in tags:
                     tag = f"{tags[t]}:"
                     date = exif_data[t]
                     date = date.replace(":", "-", 2)
-                    print(f"{tag:<20}{date}")
+                    print(f"{tag:<30}{date}")
 
                 img.close()
 
             elif kind.mime.startswith("video"):
                 print_mod_and_create_date(count, file, filepath)
+                with exiftool.ExifToolHelper() as et:
+                    metadata = et.get_metadata(filepath)
+                timeshift = False
+                if "+" in metadata[0]["File:FileModifyDate"]:
+                    timeshift = True
+                if "QuickTime:CreationDate" in metadata[0]:
+                    date = metadata[0]["QuickTime:CreationDate"].replace(
+                        ":", "-", 2
+                    )
+                elif "QuickTime:CreateDate" in metadata[0]:
+                    date = metadata[0]["QuickTime:CreateDate"].replace(
+                        ":", "-", 2
+                    )
+                    if timeshift:
+                        date = time.localtime(date)
+
+                print(f"{date}")
+                # for d in metadata[0]:
+                #     if (
+                #         d.endswith("Date")
+                #         # and not d.startswith("File:")
+                #         # and "Modif" not in d
+                #     ):
+                #         tag = f"{d}:"
+                #         date = metadata[0][d]
