@@ -28,7 +28,6 @@ def get_image_creation_date(filepath, file, date):
         metadata = et.get_metadata(filepath)
     if "EXIF:CreateDate" in metadata[0]:
         date = metadata[0]["EXIF:CreateDate"]
-        date = fix_date_format(date)
 
     if date is None:
         try:
@@ -38,13 +37,13 @@ def get_image_creation_date(filepath, file, date):
             return None
 
         exif_data = img._getexif()
+        img.close()
+
         if exif_data:
             if 36867 in exif_data:
                 date = exif_data[36867]  # DateTimeOriginal
-                date = fix_date_format(date)
-                print(f"{0:<30}{date}")
 
-        img.close()
+    date = fix_date_format(date)
     return date
 
 
@@ -91,11 +90,30 @@ def construct_filename(prefix, date, count, file_extension):
     return filename
 
 
+def save_renamed_file(filepath, dest_path, filename):
+    dest_filepath = os.path.join(dest_path, filename)
+    copy2(filepath, dest_filepath)
+
+
+def check_if_file_exists(dest_filepath, dest_path, filename):
+    if os.path.exists(dest_filepath):
+        name, ext = os.path.splitext(filename)
+        old_name, date_time = str(name.rsplit("_", 1))
+        if len(date_time) > 6:
+            last_char = date_time[-1]
+            new_char = chr(ord(last_char) + 1)
+        else:
+            new_char = "a"
+        date_time = date_time[6:] + new_char
+        filename = old_name + "_" + date_time + ext
+        dest_filepath = os.path.join(dest_path, filename)
+        # TODO: recursively check if file exists
+    check_if_file_exists(dest_filepath, dest_path, filename)
+
+
 def main():
     # Image.MAX_IMAGE_PIXELS = None
 
-    path = r
-    dest_path = r""
     count = 1
     date = None
     kind = None
@@ -125,13 +143,13 @@ def main():
             elif kind.mime.startswith("video"):
                 date = get_video_creation_date(filepath)
 
-            print(construct_filename("test", date, count))
+            filename = construct_filename("test", date, count, file_extension)
+            print(filename)
+            save_renamed_file(filepath, dest_path, filename)
+
             count += 1
 
     print_creation_date(count, date, kind, filepath)
-    filename = construct_filename("test", date, count, file_extension)
-
-    copy2(filepath, os.path.join(dest_path, filename))
 
 
 if __name__ == "__main__":
