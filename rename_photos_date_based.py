@@ -69,7 +69,7 @@ def get_video_creation_date(filepath):
 
 
 def fix_date_format(date):
-    if date.count(":") > 2:
+    if date is not None and date.count(":") > 2:
         date = date.replace(":", "-", 2)
     return date
 
@@ -77,8 +77,8 @@ def fix_date_format(date):
 def print_creation_date(count, date, kind, filepath):
     if date is None and kind is not None:
         count = print_mod_and_create_date(count, filepath)
-    elif date is not None:
-        print(f"{date}")
+    # elif date is not None:
+    # print(f"{date}")
 
 
 def construct_filename(prefix, date, count, file_extension):
@@ -91,24 +91,25 @@ def construct_filename(prefix, date, count, file_extension):
 
 
 def save_renamed_file(filepath, dest_path, filename):
-    dest_filepath = os.path.join(dest_path, filename)
+    dest_filepath, filename = check_if_file_exists(dest_path, filename)
     copy2(filepath, dest_filepath)
+    return filename
 
 
-def check_if_file_exists(dest_filepath, dest_path, filename):
+def check_if_file_exists(dest_path, filename):
+    dest_filepath = os.path.join(dest_path, filename)
     if os.path.exists(dest_filepath):
         name, ext = os.path.splitext(filename)
-        old_name, date_time = str(name.rsplit("_", 1))
+        old_name, date_time = name.rsplit("_", 1)
         if len(date_time) > 6:
             last_char = date_time[-1]
             new_char = chr(ord(last_char) + 1)
         else:
             new_char = "a"
-        date_time = date_time[6:] + new_char
+        date_time = date_time[:6] + new_char
         filename = old_name + "_" + date_time + ext
-        dest_filepath = os.path.join(dest_path, filename)
-        # TODO: recursively check if file exists
-    check_if_file_exists(dest_filepath, dest_path, filename)
+        dest_filepath, filename = check_if_file_exists(dest_path, filename)
+    return dest_filepath, filename
 
 
 def main():
@@ -128,12 +129,12 @@ def main():
             # previous file data
             print_creation_date(count, date, kind, filepath)
 
-            print(f"\t{count}  {file}")
+            print(f"{count:^6}{file:<35} ", end="")
             date = None
             kind = filetype.guess(filepath)
 
             if kind is None:
-                print(f"UNKNOWN FILETYPE: {file}")
+                print("---------------UNKNOWN FILETYPE---------------")
                 continue
 
             elif kind.mime.startswith("image"):
@@ -144,8 +145,8 @@ def main():
                 date = get_video_creation_date(filepath)
 
             filename = construct_filename("test", date, count, file_extension)
+            filename = save_renamed_file(filepath, dest_path, filename)
             print(filename)
-            save_renamed_file(filepath, dest_path, filename)
 
             count += 1
 
