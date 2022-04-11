@@ -23,7 +23,7 @@ def print_mod_and_create_date(count, filepath):
     return count
 
 
-def get_image_creation_date(filepath, file, date):
+def get_image_creation_date(filepath, date):
     with exiftool.ExifToolHelper() as et:
         metadata = et.get_metadata(filepath)
     if "EXIF:CreateDate" in metadata[0]:
@@ -33,7 +33,7 @@ def get_image_creation_date(filepath, file, date):
         try:
             img = Image.open(filepath)
         except:
-            print(f"IMAGE COULD NOT BE OPENED: {file}")
+            print("IMAGE COULD NOT BE OPENED")
             return None
 
         exif_data = img._getexif()
@@ -57,14 +57,19 @@ def get_video_creation_date(filepath):
         date = metadata[0]["QuickTime:CreateDate"]
         date = fix_date_format(date)
         if "+" in metadata[0]["File:FileModifyDate"]:
-            timeshift_value = (
-                metadata[0]["File:FileModifyDate"].split("+")[1].split(":")[0]
-            )
-            timeshift_value = int(timeshift_value)
+            date = add_timeshift_value(metadata, date)
+    return date
 
-            date = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
-            date = date + timedelta(hours=timeshift_value)
-            date = date.strftime("%Y-%m-%d %H:%M:%S")
+
+def add_timeshift_value(metadata, date):
+    timeshift_value = (
+        metadata[0]["File:FileModifyDate"].split("+")[1].split(":")[0]
+    )
+    timeshift_value = int(timeshift_value)
+
+    date = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+    date = date + timedelta(hours=timeshift_value)
+    date = date.strftime("%Y-%m-%d %H:%M:%S")
     return date
 
 
@@ -90,15 +95,37 @@ def construct_filename(prefix, date, count, file_extension):
     return filename
 
 
-def save_renamed_file(filepath, dest_path, filename):
-    dest_filepath, filename = check_if_file_exists(dest_path, filename)
-    copy2(filepath, dest_filepath)
+def save_renamed_file(filepath, dest_path, filename, kind):
+    dest_filepath, filename = check_if_file_exists(
+        filepath, dest_path, filename, kind
+    )
+    if dest_filepath:
+        copy2(filepath, dest_filepath)
     return filename
 
 
-def check_if_file_exists(dest_path, filename):
+def compare_possible_duplicate_images(dest_filepath, filepath, filename):
+    try:
+        org_img = Image.open(dest_filepath)
+        new_img = Image.open(filepath)
+        if org_img == new_img:
+            return False, ""
+        org_img.close()
+        new_img.close()
+    except:
+        pass
+    return dest_filepath, filename
+
+
+def check_if_file_exists(filepath, dest_path, filename, kind):
     dest_filepath = os.path.join(dest_path, filename)
     if os.path.exists(dest_filepath):
+        if kind.mime.startswith("image"):
+            dest_filepath, filename = compare_possible_duplicate_images(
+                dest_filepath, filepath, filename
+            )
+            if not dest_filepath or not filename:
+                return False, ""
         name, ext = os.path.splitext(filename)
         old_name, date_time = name.rsplit("_", 1)
         if len(date_time) > 6:
@@ -108,13 +135,18 @@ def check_if_file_exists(dest_path, filename):
             new_char = "a"
         date_time = date_time[:6] + new_char
         filename = old_name + "_" + date_time + ext
-        dest_filepath, filename = check_if_file_exists(dest_path, filename)
+        dest_filepath, filename = check_if_file_exists(
+            filepath, dest_path, filename, kind
+        )
     return dest_filepath, filename
 
 
 def main():
     # Image.MAX_IMAGE_PIXELS = None
 
+    prefix = input("\nName prefix:\n>  ")
+    path = input("Origin path:\n> ")
+    dest_path = input("Destination path:\n> ")
     count = 1
     date = None
     kind = None
@@ -138,14 +170,13 @@ def main():
                 continue
 
             elif kind.mime.startswith("image"):
-                date = get_image_creation_date(filepath, file, date)
-                # print(construct_filename("test", date, count))
+                date = get_image_creation_date(filepath, date)
 
             elif kind.mime.startswith("video"):
                 date = get_video_creation_date(filepath)
 
-            filename = construct_filename("test", date, count, file_extension)
-            filename = save_renamed_file(filepath, dest_path, filename)
+            filename = construct_filename(prefix, date, count, file_extension)
+            filename = save_renamed_file(filepath, dest_path, filename, kind)
             print(filename)
 
             count += 1
