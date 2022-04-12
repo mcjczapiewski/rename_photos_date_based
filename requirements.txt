@@ -1,0 +1,4 @@
+filetype==1.0.10
+PyExifTool==0.5.3
+Pillow==9.1.0
+natsort==8.1.0
